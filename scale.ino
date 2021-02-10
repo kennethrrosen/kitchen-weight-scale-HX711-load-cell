@@ -1,10 +1,16 @@
 /* 
-TKTKKT
+Simple Kitchen Weight Scale
 by: Questionable Mechanics
 contact: questionable.mechanics@gmail.com
 last rev: 2/2021
 This sketch is in the public domain
 Note: Tested using Arduino IDE ver 1.8.9 via VS Code
+
+Arduino pins:
+4 -> HX711 CLK
+5 -> DAT
+
+
 */
 
 #include <LiquidCrystal_I2C.h>
@@ -13,167 +19,104 @@ Note: Tested using Arduino IDE ver 1.8.9 via VS Code
 #include <Wire.h>
 
 #define I2C_ADDR    0x27
+#define calibration_factor -7050.0 //This value is obtained using the SparkFun_HX711_Calibration sketch below
 
 LiquidCrystal_I2C lcd(0x27,20,4); //I2C SCLK=A4, SDATA=A5 depends on board
 HX711 LoadCell(4, 5);
 
 void setup() {
-  Serial.begin(115200);
-  LoadCell.begin(); // start connection to HX711
-  LoadCell.start(2000); // load cells gets 2000ms of time to stabilize
-  LoadCell.setCalFactor(999.0); // calibration factor for load cell => dependent on your setup
-  lcd.begin(16, 2); // begins connection to the LCD module
-  lcd.backlight(); // turns on the backlight
+  Serial.begin(9600);
+  Serial.println("HX711 scale demo");
+
+  scale.begin(4, 5);
+  scale.set_LoadCell(calibration_factor); //This value is obtained by using the SparkFun_HX711_Calibration sketch
+  scale.tare(); //Assuming there is no weight on the scale at start up, reset the scale to 0
+
+  Serial.println("Readings:");
 }
 
 void loop() {
-  LoadCell.update(); // retrieves data from the load cell
-  float i = LoadCell.getData(); // get output value
-  lcd.setCursor(0, 0); // set cursor to first row
-  lcd.print("Weight[g]:"); // print out to LCD
-  lcd.setCursor(0, 1); // set cursor to secon row
-  lcd.print(i); // print out the retrieved value to the second row
+  Serial.print("Reading: ");
+  Serial.print(scale.get_units(), 1); //scale.get_units() returns a float
+  Serial.print(" lbs"); //You can change this to kg but you'll need to refactor the calibration_factor
+  Serial.println();
 }
 
+/*
+ Example using the SparkFun HX711 breakout board with a scale
+ By: Nathan Seidle
+ SparkFun Electronics
+ Date: November 19th, 2014
+ License: This code is public domain but you buy me a beer if you use this and we meet someday (Beerware license).
+ 
+ This is the calibration sketch. Use it to determine the calibration_factor that the main example uses. It also
+ outputs the zero_factor useful for projects that have a permanent mass on the scale in between power cycles.
+ 
+ Setup your scale and start the sketch WITHOUT a weight on the scale
+ Once readings are displayed place the weight on the scale
+ Press +/- or a/z to adjust the calibration_factor until the output readings match the known weight
+ Use this calibration_factor on the example sketch
+ 
+ This example assumes pounds (lbs). If you prefer kilograms, change the Serial.print(" lbs"); line to kg. The
+ calibration factor will be significantly different but it will be linearly related to lbs (1 lbs = 0.453592 kg).
+ 
+ Your calibration factor may be very positive or very negative. It all depends on the setup of your scale system
+ and the direction the sensors deflect from zero state
+ This example code uses bogde's excellent library:"https://github.com/bogde/HX711"
+ bogde's library is released under a GNU GENERAL PUBLIC LICENSE
+ Arduino pin 2 -> HX711 CLK
+ 3 -> DOUT
+ 5V -> VCC
+ GND -> GND
 
-//*********************//
+ Most any pin on the Arduino Uno will be compatible with DOUT/CLK.
+
+ The HX711 board can be powered from 2.7V to 5V so the Arduino 5V power should be fine.
+
+
 
 #include "HX711.h"
-#include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
 
-LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+#define LOADCELL_DOUT_PIN  3
+#define LOADCELL_SCK_PIN  2
 
-int IN1 = A0;
-int IN2 = A1;  
+HX711 scale;
 
-int over_val;
-int data;
-int g_weight;
-int Weight;
+float calibration_factor = -7050; //-7050 worked for my 440lb max scale setup
 
-void setup()
-{       
-  pinMode(IN1, INPUT);
-  pinMode(IN2, INPUT);
-  Init_Hx711();     
+void setup() {
   Serial.begin(9600);
-  Serial.print("Ready!\n");
-  Get_Maopi();
-  lcd.begin(16, 2); 
-  delay(1000);
-}
-
-void loop()
-{       
-
-Weight = Get_Weight();
-g_weight = Weight-data;  
-        
- lcd.setCursor(0,0);       
- lcd.print("Weight:");
- lcd.print(g_weight);
- lcd.print("g    ");
-digitalRead(IN2) == LOW){data=Weight;}
-digitalRead(IN1) == LOW){over_val=g_weight;}
+  Serial.println("HX711 calibration sketch");
+  Serial.println("Remove all weight from scale");
+  Serial.println("After readings begin, place known weight on scale");
+  Serial.println("Press + or a to increase calibration factor");
+  Serial.println("Press - or z to decrease calibration factor");
   
-delay(50);     
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  scale.set_scale();
+  scale.tare(); //Reset the scale to 0
+  
+  long zero_factor = scale.read_average(); //Get a baseline reading
+  Serial.print("Zero factor: "); //This can be used to remove the need to tare the scale. Useful in permanent scale projects.
+  Serial.println(zero_factor);
 }
 
+void loop() {
 
+  scale.set_scale(calibration_factor); //Adjust to this calibration factor
+  Serial.print("Reading: ");
+  Serial.print(scale.get_units(), 1);
+  Serial.print(" lbs"); //Change this to kg and re-adjust the calibration factor if you follow SI units like a sane person
+  Serial.print(" calibration_factor: ");
+  Serial.print(calibration_factor);
+  Serial.println();
 
-//*********************//
-
-long sample=0;
-float val=0;
-long count=0;
-
-unsigned long readCount(void)
-{
-  unsigned long Count;
-  unsigned char i;
-  pinMode(DT, OUTPUT);
-  digitalWrite(DT,HIGH);
-  digitalWrite(SCK,LOW);
-  Count=0;
-  pinMode(DT, INPUT);
-  while(digitalRead(DT));
-  for (i=0;i<24;i++)
+  if(Serial.available())
   {
-    digitalWrite(SCK,HIGH);
-    Count=Count<<1;
-    digitalWrite(SCK,LOW);
-    if(digitalRead(DT)) 
-    Count++;
+    char temp = Serial.read();
+    if(temp == '+' || temp == 'a')
+      calibration_factor += 10;
+    else if(temp == '-' || temp == 'z')
+      calibration_factor -= 10;
   }
-  digitalWrite(SCK,HIGH);
-  Count=Count^0x800000;
-  digitalWrite(SCK,LOW);
-  return(Count);
-}
-
-void setup()
-{
-  pinMode(SCK, OUTPUT);
-  pinMode(sw, INPUT_PULLUP);
-  lcd.begin(16, 2);
-  lcd.print("    Weight ");
-  lcd.setCursor(0,1);
-  lcd.print(" Measurement ");
-  delay(1000);
-  lcd.clear();
-  calibrate();
-}
-
-void loop()
-{
-  count= readCount();
-  int w=(((count-sample)/val)-2*((count-sample)/val));
-  lcd.setCursor(0,0);
-  lcd.print("Measured Weight");
-  lcd.setCursor(0,1);
-  lcd.print(w);
-  lcd.print("g             ");
-
-  if(digitalRead(sw)==0)
-  {
-    val=0;
-    sample=0;
-    w=0;
-    count=0;
-    calibrate();
-  }
-}
-
-void calibrate()
-{
-    lcd.clear();
-  lcd.print("Calibrating...");
-  lcd.setCursor(0,1);
-  lcd.print("Please Wait...");
-  for(int i=0;i<100;i++)
-  {
-    count=readCount();
-    sample+=count;
-  }
-  sample/=100;
-  lcd.clear();
-  lcd.print("Put 100g & wait");
-  count=0;
-  while(count<1000)
-  {
-    count=readCount();
-    count=sample-count;
-  }
-  lcd.clear();
-  lcd.print("Please Wait....");
-  delay(2000);
-  for(int i=0;i<100;i++)
-  {
-    count=readCount();
-    val+=sample-count;
-  }
-  val=val/100.0;
-  val=val/100.0;        // put here your calibrating weight
-  lcd.clear();
-}
+}*/
