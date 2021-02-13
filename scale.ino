@@ -10,7 +10,6 @@ Arduino pins:
 4 -> HX711 CLK
 5 -> DAT
 
-
 */
 
 #include <LiquidCrystal_I2C.h>
